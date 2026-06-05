@@ -13,6 +13,8 @@ out/
 venv/
 __pycache__/
 *.pyc
+frontend/dist/
+frontend/node_modules/
 
 # Do NOT ignore .claude-logs - it's part of the submission
 # !.claude-logs/
