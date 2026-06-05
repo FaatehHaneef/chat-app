@@ -49,7 +49,12 @@ export default async function handler(req, res) {
 
       if (error) {
         console.error("Error creating conversation:", error);
-        return res.status(500).json({ error: "Failed to create conversation" });
+        return res.status(500).json({
+          error: "Failed to create conversation",
+          details: error.message,
+          code: error.code,
+          hint: error.hint,
+        });
       }
 
       return res.status(201).json(data);

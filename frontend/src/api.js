@@ -21,7 +21,9 @@ async function handle(res) {
     let detail = '';
     try {
       const body = await res.json();
-      detail = body?.error || body?.detail || '';
+      // Prefer the underlying DB error (details) so failures are diagnosable.
+      detail = [body?.error, body?.details].filter(Boolean).join(' — ') ||
+        body?.detail || '';
     } catch {
       // body wasn't json
     }
