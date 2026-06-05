@@ -1,7 +1,7 @@
 {
-  "name": "company-research-assistant-frontend",
+  "name": "quran-chat-frontend",
   "version": "1.0.0",
-  "description": "Company Research Assistant - Frontend",
+  "description": "Qur'an Chat - AI-powered Qur'anic knowledge assistant frontend",
   "type": "module",
   "private": true,
   "scripts": {
@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",
-    "axios": "^1.6.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.39.0",
     "lucide-react": "^1.16.0",
