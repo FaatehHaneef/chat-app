@@ -65,11 +65,82 @@ def get_git_email() -> str:
 
 
 def get_project_session_dir(cwd: Path) -> Path:
-    """Get the session directory for a project."""
+    """Get the session directory for a project.
+
+    Claude encodes the project path into a folder name by replacing the path
+    separators (and other non-name characters) with '-'. On POSIX this is just
+    '/'; on Windows the path also contains a drive colon, backslashes, and may
+    contain spaces (e.g. 'C:\\Users\\me\\some project' ->
+    'c--Users-me-some-project'), so normalize all of them.
+    """
     claude_dir = Path.home() / '.claude' / 'projects'
-    # Claude uses path with / replaced by - (keeps leading dash)
-    project_hash = str(cwd).replace('/', '-')
-    return claude_dir / project_hash
+    raw = str(cwd)
+    # Lowercase a leading Windows drive letter ('C:\\...' -> 'c:\\...').
+    if len(raw) >= 2 and raw[1] == ':':
+        raw = raw[0].lower() + raw[1:]
+    # Replace path separators, drive colon, and whitespace with '-'.
+    project_hash = re.sub(r'[\\/:\s]', '-', raw)
+    candidate = claude_dir / project_hash
+    if candidate.exists():
+        return candidate
+
+    # Fallback: locate the project dir by scanning for the one whose most recent
+    # non-agent session was touched most recently. Keeps logging working even if
+    # the encoding above doesn't exactly match this Claude version's scheme.
+    if claude_dir.exists():
+        best_dir = None
+        best_mtime = -1.0
+        for proj in claude_dir.iterdir():
+            if not proj.is_dir():
+                continue
+            sessions = [f for f in proj.glob('*.jsonl') if not f.name.startswith('agent-')]
+            if not sessions:
+                continue
+            mtime = max(f.stat().st_mtime for f in sessions)
+            if mtime > best_mtime:
+                best_mtime = mtime
+                best_dir = proj
+        if best_dir is not None:
+            return best_dir
+
+    return candidate
+
+
+def extract_user_text(entry: dict) -> Optional[str]:
+    """Extract the human-authored text from a user entry.
+
+    User prompts may be stored either as a plain string, or (in newer Claude
+    Code versions) as a content list of typed blocks, e.g.
+    [{"type": "text", "text": "..."}]. Tool results are also delivered as user
+    entries with {"type": "tool_result", ...} blocks; those are NOT prompts.
+
+    Returns the cleaned prompt text, or None if this entry is not a real prompt.
+    """
+    content = entry.get('message', {}).get('content', '')
+
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        # A tool-result block anywhere means this is a tool result, not a prompt.
+        if any(isinstance(b, dict) and b.get('type') == 'tool_result' for b in content):
+            return None
+        texts = [
+            b.get('text', '') for b in content
+            if isinstance(b, dict) and b.get('type') == 'text'
+        ]
+        text = '\n\n'.join(t for t in texts if t.strip())
+    else:
+        return None
+
+    text = text.strip()
+    if not text:
+        return None
+    # Skip slash-command wrappers and system/caveat messages.
+    if text.startswith('<command-name>') or text.startswith('<local-command'):
+        return None
+    if text.startswith('Caveat:'):
+        return None
+    return text
 
 
 def is_user_prompt(entry: dict) -> bool:
@@ -78,28 +149,7 @@ def is_user_prompt(entry: dict) -> bool:
         return False
     if entry.get('isMeta') or entry.get('isSidechain'):
         return False
-
-    content = entry.get('message', {}).get('content', '')
-
-    # Skip tool results
-    if isinstance(content, list):
-        if any(c.get('type') == 'tool_result' for c in content):
-            return False
-        return False  # Lists are usually tool results
-
-    # Skip commands and system messages
-    if isinstance(content, str):
-        if content.startswith('<command-name>'):
-            return False
-        if content.startswith('<local-command'):
-            return False
-        if content.startswith('Caveat:'):
-            return False
-        if not content.strip():
-            return False
-        return True
-
-    return False
+    return extract_user_text(entry) is not None
 
 
 def extract_assistant_text(entry: dict) -> Optional[str]:
@@ -133,7 +183,7 @@ def extract_clean_log(jsonl_path: Path) -> List[Tuple[str, str, str]]:
     """
     entries = []
 
-    for line in jsonl_path.read_text().strip().split('\n'):
+    for line in jsonl_path.read_text(encoding='utf-8').strip().split('\n'):
         if not line.strip():
             continue
         try:
@@ -144,9 +194,9 @@ def extract_clean_log(jsonl_path: Path) -> List[Tuple[str, str, str]]:
         timestamp = entry.get('timestamp', '')
 
         if is_user_prompt(entry):
-            content = entry.get('message', {}).get('content', '')
-            if isinstance(content, str) and content.strip():
-                entries.append((timestamp, 'user', content.strip()))
+            text = extract_user_text(entry)
+            if text:
+                entries.append((timestamp, 'user', text))
 
         elif entry.get('type') == 'assistant':
             text = extract_assistant_text(entry)
@@ -402,7 +452,7 @@ def main():
             lines.append(f"chars: {len(content)}")
             lines.append(f"\n{content}\n")
 
-    output_path.write_text('\n'.join(lines))
+    output_path.write_text('\n'.join(lines), encoding='utf-8')
 
 
 if __name__ == '__main__':
