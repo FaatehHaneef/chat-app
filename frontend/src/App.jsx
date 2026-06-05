@@ -2,9 +2,10 @@
  * Qur'an Chat App — AI-powered conversational interface for Qur'anic knowledge.
  *
  * Layout:
- *  - BackgroundShapes fills the viewport behind everything (z -10)
+ *  - BackgroundShapes fills the viewport behind everything (z 0)
  *  - Sidebar floats over the left edge (z 40), showing conversations
- *  - Main pane shows chat messages with an input composer at the bottom
+ *  - Welcome mode: centered hero with a large composer and suggestion chips
+ *  - Chat mode: scrolling message list with the composer docked at the bottom
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -40,10 +41,70 @@ const GREETING = {
 
 const PROMPT_CHIPS = [
   { icon: BookOpen, label: 'Surah Al-Fatiha', text: 'Tell me about Surah Al-Fatiha.' },
-  { icon: Heart, label: 'On Mercy', text: 'What does the Qur\'an say about mercy?' },
-  { icon: Lightbulb, label: 'On Wisdom', text: 'What verses discuss wisdom in the Qur\'an?' },
-  { icon: MessageCircle, label: 'Ask Anything', text: 'Start your question...' },
+  { icon: Heart, label: 'On Mercy', text: "What does the Qur'an say about mercy?" },
+  { icon: Lightbulb, label: 'On Wisdom', text: "What verses discuss wisdom in the Qur'an?" },
+  { icon: MessageCircle, label: 'Ask Anything', text: '' },
 ];
+
+/**
+ * The shared composer: an auto-growing textarea with an Enter-to-send hint and
+ * a labelled Send button. Used centered in welcome mode and docked in chat mode.
+ */
+function Composer({ value, onChange, onSend, isLoading, autoFocus }) {
+  const textareaRef = useRef(null);
+
+  // Auto-grow the textarea up to a max height.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [value]);
+
+  return (
+    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl shadow-2xl focus-within:border-white/20 transition-colors">
+      <textarea
+        ref={textareaRef}
+        rows={1}
+        autoFocus={autoFocus}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            onSend();
+          }
+        }}
+        placeholder="Ask about the Qur'an..."
+        className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-[15px] text-white placeholder-white/40 focus:outline-none"
+      />
+      <div className="flex items-center justify-between px-3 pb-3 pt-1">
+        <span className="text-xs text-white/35 select-none">
+          Press <kbd className="font-sans">Enter</kbd> to send ·{' '}
+          <kbd className="font-sans">Shift+Enter</kbd> for a new line
+        </span>
+        <motion.button
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={onSend}
+          disabled={isLoading || !value.trim()}
+          className={cn(
+            'flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors',
+            'bg-white/[0.06] border border-white/[0.10] text-white/90',
+            'hover:bg-white/[0.12] disabled:opacity-40 disabled:cursor-not-allowed'
+          )}
+        >
+          {isLoading ? (
+            <LoaderIcon size={16} className="animate-spin" />
+          ) : (
+            <SendIcon size={16} />
+          )}
+          Send
+        </motion.button>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -53,6 +114,7 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [initError, setInitError] = useState('');
   const messagesEndRef = useRef(null);
 
   // Initialize user and conversations
@@ -65,19 +127,22 @@ export default function App() {
         }
         setUser(currentUser);
 
-        // Load conversations
         const convs = await listConversations(currentUser.id);
         setConversations(convs || []);
 
-        // Create initial conversation if none exists
         if (!convs || convs.length === 0) {
-          const newConv = await createConversation(currentUser.id, 'Qur\'an Questions');
+          const newConv = await createConversation(currentUser.id, "Qur'an Questions");
           setCurrentConversationId(newConv.id);
         } else {
           setCurrentConversationId(convs[0].id);
         }
+        setInitError('');
       } catch (error) {
         console.error('Failed to initialize:', error);
+        setInitError(
+          error?.message ||
+            'Could not connect. Check Supabase auth (anonymous sign-ins) and env vars.'
+        );
       }
     }
     initializeApp();
@@ -92,7 +157,6 @@ export default function App() {
     async (text) => {
       if (!text.trim() || !currentConversationId || !user) return;
 
-      // Add user message immediately
       const userMsg = {
         role: 'user',
         content: text,
@@ -103,26 +167,27 @@ export default function App() {
       setIsLoading(true);
 
       try {
-        // Send to backend
         const result = await sendMessage(currentConversationId, text, user.id);
-
-        // Add assistant response
         if (result.assistantMessage) {
-          const assistantMsg = {
-            role: 'assistant',
-            content: result.assistantMessage.content,
-            timestamp: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, assistantMsg]);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: result.assistantMessage.content,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
         }
       } catch (error) {
         console.error('Error sending message:', error);
-        const errorMsg = {
-          role: 'assistant',
-          content: `Sorry, I encountered an error: ${error.message}. Please try again.`,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, errorMsg]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: `Sorry, I encountered an error: ${error.message}. Please try again.`,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
       } finally {
         setIsLoading(false);
       }
@@ -130,12 +195,12 @@ export default function App() {
     [currentConversationId, user]
   );
 
-  const handleChipClick = (text) => {
-    if (text !== 'Ask Anything...') {
-      handleSendMessage(text);
+  const handleChipClick = (chip) => {
+    if (chip.text) {
+      handleSendMessage(chip.text);
     } else {
-      // Focus input for custom question
-      document.querySelector('input[type="text"]')?.focus();
+      // "Ask Anything" — just focus the composer.
+      document.querySelector('textarea')?.focus();
     }
   };
 
@@ -166,7 +231,7 @@ export default function App() {
   const isWelcomeMode = messages.length === 1 && messages[0] === GREETING;
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="relative w-full h-screen overflow-hidden text-white">
       <BackgroundShapes />
 
       <Sidebar
@@ -174,7 +239,7 @@ export default function App() {
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         conversations={conversations.map((conv) => ({
           id: conv.id,
-          preview: conv.title || 'Qur\'an Questions',
+          preview: conv.title || "Qur'an Questions",
           created_at: conv.created_at,
           status: conv.status,
         }))}
@@ -184,103 +249,96 @@ export default function App() {
         onNewChat={handleNewConversation}
       />
 
-      <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 h-full">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4 }}
-          className="w-full max-w-2xl h-full md:h-auto md:max-h-[80vh] flex flex-col bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl overflow-hidden"
-        >
-          {/* Messages area */}
-          <div
-            className={cn(
-              'flex-1 overflow-y-auto p-4 md:p-6 space-y-4',
-              isWelcomeMode ? 'flex flex-col items-center justify-center' : ''
-            )}
-          >
-            {isWelcomeMode ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center space-y-6 max-w-md"
-              >
-                <div className="text-5xl mb-4">📖</div>
-                <h1 className="text-3xl md:text-4xl font-bold text-white">
-                  Qur'an Chat
-                </h1>
-                <p className="text-lg text-white/70">
-                  Ask me anything about the Qur'an
-                </p>
-                <div className="space-y-2">
-                  {PROMPT_CHIPS.map((chip) => {
-                    const Icon = chip.icon;
-                    return (
-                      <motion.button
-                        key={chip.label}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => handleChipClick(chip.text)}
-                        className="w-full flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white/80 hover:text-white"
-                      >
-                        <Icon size={18} />
-                        <span>{chip.label}</span>
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            ) : (
-              <>
-                {messages.map((msg, i) => (
-                  <ChatMessage
-                    key={i}
-                    message={msg}
-                    isUser={msg.role === 'user'}
-                  />
-                ))}
-                {isLoading && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex items-center gap-2 text-white/60"
-                  >
-                    <LoaderIcon size={16} className="animate-spin" />
-                    <span>Thinking...</span>
-                  </motion.div>
-                )}
-                <div ref={messagesEndRef} />
-              </>
-            )}
-          </div>
+      {/* App name pill, top-right */}
+      <div className="absolute top-4 right-4 z-30">
+        <span className="rounded-full border border-white/[0.12] bg-white/[0.04] px-3 py-1 text-sm text-white/70 backdrop-blur-md">
+          Qur'an Chat
+        </span>
+      </div>
 
-          {/* Input composer */}
-          <div className="border-t border-white/10 bg-white/5 p-3 md:p-4">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage(inputValue);
-                  }
-                }}
-                placeholder="Ask about the Qur'an..."
-                className="flex-1 bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:border-white/40 focus:bg-white/15"
-              />
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSendMessage(inputValue)}
-                disabled={isLoading || !inputValue.trim()}
-                className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg p-2 transition-all"
-              >
-                <SendIcon size={20} />
-              </motion.button>
+      <div className="relative z-10 flex h-full flex-col items-center">
+        {initError && (
+          <div className="mt-16 w-full max-w-2xl px-4">
+            <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">
+              {initError}
             </div>
           </div>
-        </motion.div>
+        )}
+
+        {isWelcomeMode ? (
+          /* ---------- Welcome mode: centered hero ---------- */
+          <div className="flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-4">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="w-full text-center"
+            >
+              <div className="mb-4 text-5xl">📖</div>
+              <h1 className="mb-2 text-4xl font-bold tracking-tight text-white md:text-5xl">
+                Qur'an Chat
+              </h1>
+              <p className="mb-8 text-lg text-white/60">
+                Ask anything about the Qur'an — answers grounded in scholarship.
+              </p>
+
+              <Composer
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={() => handleSendMessage(inputValue)}
+                isLoading={isLoading}
+                autoFocus
+              />
+
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                {PROMPT_CHIPS.map((chip) => {
+                  const Icon = chip.icon;
+                  return (
+                    <motion.button
+                      key={chip.label}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => handleChipClick(chip)}
+                      className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white"
+                    >
+                      <Icon size={16} />
+                      <span>{chip.label}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </div>
+        ) : (
+          /* ---------- Chat mode: message list + docked composer ---------- */
+          <div className="flex w-full max-w-3xl flex-1 flex-col overflow-hidden px-4">
+            <div className="flex-1 space-y-4 overflow-y-auto py-6">
+              {messages.map((msg, i) => (
+                <ChatMessage key={i} message={msg} isUser={msg.role === 'user'} />
+              ))}
+              {isLoading && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center gap-2 text-white/50"
+                >
+                  <LoaderIcon size={16} className="animate-spin" />
+                  <span>Thinking...</span>
+                </motion.div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="pb-6 pt-2">
+              <Composer
+                value={inputValue}
+                onChange={setInputValue}
+                onSend={() => handleSendMessage(inputValue)}
+                isLoading={isLoading}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

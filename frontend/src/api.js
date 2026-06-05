@@ -32,11 +32,13 @@ async function handle(res) {
   return res.json();
 }
 
-// Get current user
+// Get current user. Returns null when there is no session yet (a fresh
+// visitor) so the caller can fall back to an anonymous sign-in, instead of
+// throwing on the expected "Auth session missing" case.
 export async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
   if (error) {
-    throw new Error(`Auth error: ${error.message}`);
+    return null;
   }
   return data.user;
 }
@@ -64,13 +66,16 @@ export async function sendMessage(conversationId, userMessage, userId) {
   return handle(res);
 }
 
-// List conversations for user
+// List conversations for user. GET requests can't carry a body in the
+// browser, so the userId goes in the query string.
 export async function listConversations(userId) {
-  const res = await fetch(`${API_BASE_URL}/api/conversations`, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-  });
+  const res = await fetch(
+    `${API_BASE_URL}/api/conversations?userId=${encodeURIComponent(userId)}`,
+    {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
   return handle(res);
 }
 

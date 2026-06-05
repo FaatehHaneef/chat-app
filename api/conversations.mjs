@@ -13,7 +13,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId } = req.body;
+    // GET carries userId in the query string; the other verbs use the body.
+    const userId = req.method === "GET" ? req.query.userId : req.body?.userId;
 
     if (!userId) {
       return res.status(400).json({ error: "Missing userId" });

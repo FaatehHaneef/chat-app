@@ -14,9 +14,11 @@ CREATE POLICY "Users can view their own data" ON users
   FOR SELECT USING (auth.uid() = id);
 
 -- 2. Conversations table
+-- user_id references auth.users directly so it works with anonymous sign-ins
+-- (anonymous users have no email and never get a row in public.users).
 CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   title TEXT DEFAULT 'New Conversation',
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -81,7 +83,7 @@ CREATE POLICY "Allow public read access" ON quran_cache
 -- 5. Chat logs table (for tracking AI interactions)
 CREATE TABLE IF NOT EXISTS chat_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
   prompt TEXT NOT NULL,
   response TEXT NOT NULL,
