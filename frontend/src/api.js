@@ -7,11 +7,12 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// For local dev, use localhost; for prod, use Vercel URL
+// For local dev, use localhost; in prod on Vercel the API is same-origin,
+// so the base is empty and requests go to /api/chat, /api/conversations.
 const API_BASE_URL =
   import.meta.env.DEV && import.meta.env.VITE_LOCAL_API_URL
     ? import.meta.env.VITE_LOCAL_API_URL
-    : import.meta.env.VITE_API_URL || '/.netlify/functions';
+    : import.meta.env.VITE_API_URL || '';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
