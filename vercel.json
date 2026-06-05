@@ -1,6 +1,5 @@
 {
-  "buildCommand": "npm install && cd frontend && npm install && npm run build",
-  "devCommand": "cd frontend && npm run dev",
+  "buildCommand": "npm run build",
   "installCommand": "npm install",
   "outputDirectory": "frontend/dist",
   "regions": ["sfo1"],
