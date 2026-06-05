@@ -1,0 +1,5 @@
+{
+  "hooks": {
+    "stop": "python3 scripts/extract-log.py"
+  }
+}

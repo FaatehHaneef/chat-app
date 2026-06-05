@@ -1,0 +1,18 @@
+node_modules/
+*.log
+.DS_Store
+.env
+.env.local
+dist/
+build/
+.eas/
+.expo/
+.next/
+out/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Do NOT ignore .claude-logs - it's part of the submission
+# !.claude-logs/
