@@ -35,7 +35,7 @@ import './App.css';
 const GREETING = {
   role: 'assistant',
   content:
-    "As-salamu alaikum! I'm your Qur'an Chat Assistant. Ask me anything about the Qur'an and I'll provide clear, respectful answers grounded in Islamic scholarship.",
+    "As-salamu alaikum. How may I help you with the Qur'an today? Ask me about a surah, a verse, or a theme, and I'll answer with clear, cited references.",
   timestamp: new Date().toISOString(),
 };
 
@@ -278,8 +278,8 @@ export default function App() {
               <h1 className="mb-2 text-4xl font-bold tracking-tight text-white md:text-5xl">
                 Qur'an Chat
               </h1>
-              <p className="mb-8 text-lg text-white/60">
-                Ask anything about the Qur'an — answers grounded in scholarship.
+              <p className="mb-8 text-lg leading-relaxed text-white/70">
+                {GREETING.content}
               </p>
 
               <Composer
